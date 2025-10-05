@@ -28,8 +28,14 @@ class MasterItemsController extends Controller
         if (!empty($nama)) $data_search = $data_search->where('nama', 'LIKE', '%' . $nama . '%');
         if (!empty($hargamin)) $data_search = $data_search->where('harga_beli', '>=', $hargamin)->where('harga_beli', '<=', $hargamax);
 
-        $data_search = $data_search->select('kode', 'nama', 'jenis', 'harga_beli', 'laba', 'supplier')->orderBy('id')->get();
+        $data_search = $data_search->select('kode', 'nama', 'jenis', 'harga_beli', 'laba', 'supplier', 'avatar')->orderBy('id')->get();
 
+        $data_search->map(function ($item) {
+            $item->avatar_url = $item->avatar
+                ? asset('storage/' . $item->avatar)
+                : asset('storage/default.png');
+            return $item;
+        });
 
         return json_encode([
             'status' => 200,

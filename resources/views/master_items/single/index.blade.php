@@ -45,7 +45,7 @@
                             <tr>
                                 <th>Foto</th>
                                 <td>:</td>
-                                <td><img src="{{ asset('storage/avatars/' . $data->avatar) }}" alt="Gambr"></td>
+                                <td><img src="{{ url('storage/' . $data->avatar) }}" alt="Gambr"></td>
 
                             </tr>
                         </table>
