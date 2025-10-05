@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\MasterItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class MasterItemsController extends Controller
 {
@@ -34,16 +37,17 @@ class MasterItemsController extends Controller
         ]);
     }
 
-    public function formView($method, $id = 0)
+    public function formView($method, $id = null)
     {
         if ($method == 'new') {
-            $item = [];
+            $item = new MasterItem();
         } else {
-            $item = MasterItem::find($id);
+            $item = MasterItem::with('categories')->findOrFail($id);
         }
-        $data['item'] = $item;
-        $data['method'] = $method;
-        return view('master_items.form.index', $data);
+        return view('master_items.form.index', [
+            'item' => $item,
+            'method' => $method
+        ]);
     }
 
     public function singleView($kode)
@@ -55,26 +59,46 @@ class MasterItemsController extends Controller
     public function formSubmit(Request $request, $method, $id = 0)
     {
         if ($method == 'new') {
-            $data_item = new MasterItem;
-            $kode = MasterItem::count('id');
-            $kode = $kode + 1;
+            $data_item = new MasterItem();
+            $kode = MasterItem::count('id') + 1;
             $kode = str_pad($kode, 5, '0', STR_PAD_LEFT);
-            sleep(3);
+            sleep(1);
         } else {
-            $data_item = MasterItem::find($id);
+            $data_item = MasterItem::findOrFail($id);
             $kode = $data_item->kode;
         }
 
+        // Isi data utama
         $data_item->nama = $request->nama;
         $data_item->harga_beli = $request->harga_beli;
         $data_item->laba = $request->laba;
         $data_item->kode = $kode;
         $data_item->supplier = $request->supplier;
-        $data_item->jenis = $request->jenis;
+
+        // Ambil nama kategori untuk update 'jenis'
+        $kategori_names = Category::whereIn('id', $request->kategori ?? [])->pluck('nama')->toArray();
+        $data_item->jenis = implode(', ', $kategori_names);
+
+        // Simpan MasterItem dulu supaya ada ID
         $data_item->save();
 
-        return redirect('master-items');
+        // Sync kategori
+        $data_item->categories()->sync($request->kategori ?? []);
+
+        // Upload avatar
+        if ($request->hasFile('avatar')) {
+            if ($data_item->avatar && file_exists(public_path('storage/' . $data_item->avatar))) {
+                unlink(public_path('storage/' . $data_item->avatar));
+            }
+            $file = $request->file('avatar');
+            $path = $file->store('avatars', 'public');
+            $data_item->avatar = $path;
+            $data_item->save();
+        }
+
+        return redirect('master-items')->with('success', 'Item berhasil disimpan.');
     }
+
 
     public function delete($id)
     {
@@ -85,31 +109,46 @@ class MasterItemsController extends Controller
     public function updateRandomData()
     {
         $data = MasterItem::get();
-        foreach($data as $item)
-        {
+        $avatar_samples = Storage::disk('public')->files('avatars/sample');
+
+        foreach ($data as $item) {
             $kode = $item->id;
             $kode = str_pad($kode, 5, '0', STR_PAD_LEFT);
 
-            $item->harga_beli = rand(100,1000000);
-            $item->laba = rand(10,99);
+            $item->harga_beli = rand(100, 1000000);
+            $item->laba = rand(10, 99);
             $item->kode = $kode;
             $item->supplier = $this->getRandomSupplier();
             $item->jenis = $this->getRandomJenis();
+            if (count($avatar_samples) > 0) {
+
+                $random_avatar = $avatar_samples[array_rand($avatar_samples)];
+
+                $ext = pathinfo($random_avatar, PATHINFO_EXTENSION);
+                $new_filename = 'avatars/' . Str::random(10) . '.' . $ext;
+
+                if ($item->avatar && Storage::disk('public')->exists($item->avatar)) {
+                    Storage::disk('public')->delete($item->avatar);
+                }
+                Storage::disk('public')->copy($random_avatar, $new_filename);
+
+                $item->avatar = $new_filename;
+            }
             $item->save();
         }
     }
 
     private function getRandomSupplier()
     {
-        $array = ['Tokopaedi','Bukulapuk','TokoBagas','E Commurz','Blublu'];
-        $random = rand(0,4);
+        $array = ['Tokopaedi', 'Bukulapuk', 'TokoBagas', 'E Commurz', 'Blublu'];
+        $random = rand(0, 4);
         return $array[$random];
     }
 
     private function getRandomJenis()
     {
-        $array = ['Obat','Alkes','Matkes','Umum','ATK'];
-        $random = rand(0,4);
+        $array = ['Obat', 'Alkes', 'Matkes', 'Umum', 'ATK'];
+        $random = rand(0, 4);
         return $array[$random];
     }
 }
